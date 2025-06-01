@@ -1,36 +1,63 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from app.models.candidate import Candidate
 from app.schemas.candidate import CandidateCreate, CandidateResponse
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 class CandidateService:
     def __init__(self, db: Session):
         self.db = db
     
-    def create_candidate(self, candidate_data: CandidateCreate) -> Candidate:
-        """Create a new candidate in database"""
-        db_candidate = Candidate(
-            name=candidate_data.name,
-            email=candidate_data.email,
-            phone=candidate_data.phone,
-            skills=candidate_data.skills,
-            experience_years=candidate_data.experience_years,
-            location=candidate_data.location,
-            resume_text=candidate_data.resume_text,
-            resume_filename=candidate_data.resume_filename
-        )
-        self.db.add(db_candidate)
-        self.db.commit()
-        self.db.refresh(db_candidate)
-        return db_candidate
+    def create_candidate(self, candidate_data: CandidateCreate) -> Dict:
+        """Create candidate with automatic duplicate handling"""
+        try:
+            # Attempt to create new candidate
+            db_candidate = Candidate(
+                name=candidate_data.name,
+                email=candidate_data.email,
+                phone=candidate_data.phone,
+                skills=candidate_data.skills,
+                experience_years=candidate_data.experience_years,
+                location=candidate_data.location,
+                resume_text=candidate_data.resume_text,
+                resume_filename=candidate_data.resume_filename
+            )
+            self.db.add(db_candidate)
+            self.db.commit()
+            self.db.refresh(db_candidate)
+            
+            return {
+                "message": "Candidate created successfully",
+                "action": "created",
+                "candidate": db_candidate
+            }
+            
+        except IntegrityError:
+            # Rollback the failed transaction
+            self.db.rollback()
+            
+            # Find existing candidate by email (assuming email is unique)
+            existing_candidate = self.db.query(Candidate).filter(
+                Candidate.email == candidate_data.email
+            ).first()
+            
+            if existing_candidate:
+                return {
+                    "message": "Candidate exists",
+                    "action": "exists",
+                    "candidate": existing_candidate
+                }
+            else:
+                # This shouldn't happen, but handle edge case
+                raise Exception("Database conflict error but candidate not found")
     
+
     def get_candidates(self, skip: int = 0, limit: int = 100) -> List[Candidate]:
-        """Get all candidates with pagination"""
         return self.db.query(Candidate).offset(skip).limit(limit).all()
     
     def get_candidate(self, candidate_id: int) -> Optional[Candidate]:
-        """Get specific candidate by ID"""
         return self.db.query(Candidate).filter(Candidate.id == candidate_id).first()
+
     
     def search_candidates(self, criteria: dict, max_results: int = 20) -> List[dict]:
         """Search candidates based on criteria"""
@@ -106,3 +133,38 @@ class CandidateService:
             return []
         
         return list(set(criteria["skills"]) & set(candidate.skills))
+
+
+    def delete_candidate(self, candidate_id: int) -> Dict:
+        """Delete candidate by ID"""
+        # Find the candidate
+        candidate = self.db.query(Candidate).filter(Candidate.id == candidate_id).first()
+        
+        if not candidate:
+            return {
+                "success": False,
+                "message": f"Candidate with ID {candidate_id} not found",
+                "candidate": None
+            }
+        
+        # Store candidate data before deletion
+        candidate_data = {
+            "id": candidate.id,
+            "name": candidate.name,
+            "email": candidate.email,
+            "phone": candidate.phone,
+            "skills": candidate.skills,
+            "experience_years": candidate.experience_years,
+            "location": candidate.location,
+            "created_at": candidate.created_at.isoformat() if candidate.created_at else None
+        }
+        
+        # Delete the candidate
+        self.db.delete(candidate)
+        self.db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Candidate '{candidate.name}' deleted successfully",
+            "candidate": candidate_data
+        }

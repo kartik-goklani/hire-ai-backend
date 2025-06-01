@@ -16,10 +16,18 @@ app = FastAPI(
     version="1.0.0"
 )
 
+origins = [
+    "http://localhost:3000",  # Local development
+    "http://localhost:3001",  # Alternative local port
+    "https://hire-lm7mqnswz-eshaans-projects-432e55c0.vercel.app",  # Your Vercel app
+    "https://*.vercel.app",  # All Vercel preview deployments
+    "*"  # Allow all origins (for development only)
+]
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://hire-fast-ai.vercel.app"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
