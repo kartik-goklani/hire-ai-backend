@@ -13,7 +13,7 @@ async def search_candidates(
     search_query: SearchQuery,
     db: Session = Depends(get_database)
 ):
-    """Search candidates using natural language query"""
+    """Search candidates using natural language query - returns all candidates with match scores"""
     ai_service = AIService()
     candidate_service = CandidateService(db)
     
@@ -21,11 +21,37 @@ async def search_candidates(
         # Process natural language query with AI
         structured_criteria = await ai_service.process_search_query(search_query.query)
         
-        # Search candidates using the structured criteria
-        results = candidate_service.search_candidates(
-            criteria=structured_criteria,
-            max_results=search_query.max_results
-        )
+        # Fetch ALL candidates from the database
+        all_candidates = candidate_service.get_candidates(skip=0, limit=1000)  # large limit to get all
+        
+        results = []
+        for candidate in all_candidates:
+            # Calculate match score for each candidate
+            score = candidate_service._calculate_match_score(candidate, structured_criteria)
+            matching_skills = candidate_service._get_matching_skills(candidate, structured_criteria)
+            
+            # Format candidate data exactly as specified
+            candidate_data = {
+                "name": candidate.name,
+                "id": candidate.id,
+                "email": candidate.email,
+                "phone": candidate.phone,
+                "experience_years": candidate.experience_years,
+                "resume_text": candidate.resume_text,
+                "created_at": candidate.created_at.isoformat() if candidate.created_at else None,
+                "skills": candidate.skills,
+                "location": candidate.location,
+                "resume_filename": candidate.resume_filename
+            }
+            
+            results.append({
+                "candidate": candidate_data,
+                "match_score": score,
+                "matching_skills": matching_skills
+            })
+        
+        # Sort by match score in descending order (highest matches first)
+        results.sort(key=lambda x: x["match_score"], reverse=True)
         
         return {
             "query": search_query.query,
