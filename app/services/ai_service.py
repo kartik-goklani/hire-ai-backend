@@ -4,6 +4,10 @@ from typing import Dict, List
 import os
 import re
 
+from app.services.logger import AppLogger
+logger = AppLogger.get_logger(__name__)
+
+
 class AIService:
     def __init__(self):
         self.api_key = os.getenv("GROQ_API_KEY")
@@ -58,18 +62,20 @@ class AIService:
                     json_end = content.rfind('}') + 1
                     if json_start != -1 and json_end > json_start:
                         json_content = content[json_start:json_end]
+                        logger.info("Successfully extracted hiring criteria from LLM response")
                         return json.loads(json_content)
                     else:
+                        logger.info("Successfully extracted hiring criteria (fallback JSON parse)")
                         return json.loads(content)
                 except json.JSONDecodeError:
-                    print(f"Failed to parse JSON: {content}")
+                    logger.error(f"Failed to parse JSON: {content}")
                     return self._fallback_extraction(query)
             else:
-                print(f"API Error: {response.status_code} - {response.text}")
+                logger.error(f"API Error: {response.status_code} - {response.text}")
                 return self._fallback_extraction(query)
                 
         except Exception as e:
-            print(f"Exception in process_search_query: {e}")
+            logger.error(f"Exception in process_search_query: {e}")
             return self._fallback_extraction(query)
     
     async def generate_screening_questions(self, job_requirements: str) -> List[str]:
@@ -146,17 +152,18 @@ class AIService:
                                 return formatted_questions
                     
                     # If JSON parsing fails, try to parse as regular text
+                    logger.info("Screening questions generated (fallback parse)")
                     return self._parse_questions_from_text(content, job_requirements)
                     
                 except json.JSONDecodeError:
-                    print(f"Failed to parse questions JSON: {content}")
+                    logger.error(f"Failed to parse questions JSON: {content}")
                     return self._parse_questions_from_text(content, job_requirements)
             else:
-                print(f"API Error in questions: {response.status_code} - {response.text}")
+                logger.error(f"API Error in questions: {response.status_code} - {response.text}")
                 return self._generate_contextual_fallback(job_requirements)
                 
         except Exception as e:
-            print(f"Exception in generate_screening_questions: {e}")
+            logger.error(f"Exception in generate_screening_questions: {e}")
             return self._generate_contextual_fallback(job_requirements)
     
     def _parse_questions_from_text(self, text: str, job_requirements: str) -> List[str]:

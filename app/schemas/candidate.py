@@ -1,26 +1,28 @@
-from pydantic import BaseModel, EmailStr
-from typing import List, Optional
+# app/schemas/candidate.py
+from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 
 class CandidateBase(BaseModel):
     name: str
     email: str
     phone: Optional[str] = None
-    skills: List[str] = []
+    skills: list[str] = []
     experience_years: int = 0
     location: Optional[str] = None
-
-class CandidateCreate(CandidateBase):
     resume_text: Optional[str] = None
     resume_filename: Optional[str] = None
 
+class CandidateCreate(CandidateBase):
+    pass
+
 class CandidateResponse(CandidateBase):
-    id: int
+    id: str  # Changed from int to string
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 class SearchQuery(BaseModel):
     query: str
-    max_results: Optional[int] = 20
+    min_experience: Optional[int] = None
+    max_experience: Optional[int] = None
+    required_skills: Optional[list[str]] = None
+    location: Optional[str] = None

@@ -1,28 +1,29 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from typing import List
-from app.database import get_database
+from app.dependencies import get_firestore
 from app.schemas.candidate import SearchQuery
 from app.services.ai_service import AIService
 from app.services.candidate_service import CandidateService
+from app.services.firestore_service import FirestoreService
 
 router = APIRouter()
 
 @router.post("/")
 async def search_candidates(
     search_query: SearchQuery,
-    db: Session = Depends(get_database)
+    fs: FirestoreService = Depends(get_firestore)
 ):
     """Search candidates using natural language query - returns all candidates with match scores"""
     ai_service = AIService()
-    candidate_service = CandidateService(db)
+    candidate_service = CandidateService(fs)
     
     try:
         # Process natural language query with AI
         structured_criteria = await ai_service.process_search_query(search_query.query)
         
-        # Fetch ALL candidates from the database
-        all_candidates = candidate_service.get_candidates(skip=0, limit=1000)  # large limit to get all
+        # Fetch ALL candidates from Firestore
+        all_candidates_docs = fs.db.collection("candidates").stream()
+        all_candidates = [doc.to_dict() for doc in all_candidates_docs]
         
         results = []
         for candidate in all_candidates:
@@ -30,18 +31,18 @@ async def search_candidates(
             score = candidate_service._calculate_match_score(candidate, structured_criteria)
             matching_skills = candidate_service._get_matching_skills(candidate, structured_criteria)
             
-            # Format candidate data exactly as specified
+            # Format candidate data
             candidate_data = {
-                "name": candidate.name,
-                "id": candidate.id,
-                "email": candidate.email,
-                "phone": candidate.phone,
-                "experience_years": candidate.experience_years,
-                "resume_text": candidate.resume_text,
-                "created_at": candidate.created_at.isoformat() if candidate.created_at else None,
-                "skills": candidate.skills,
-                "location": candidate.location,
-                "resume_filename": candidate.resume_filename
+                "name": candidate.get("name"),
+                "id": candidate.get("id"),
+                "email": candidate.get("email"),
+                "phone": candidate.get("phone"),
+                "experience_years": candidate.get("experience_years"),
+                "resume_text": candidate.get("resume_text"),
+                "created_at": candidate.get("created_at").isoformat() if candidate.get("created_at") else None,
+                "skills": candidate.get("skills"),
+                "location": candidate.get("location"),
+                "resume_filename": candidate.get("resume_filename")
             }
             
             results.append({
@@ -50,7 +51,7 @@ async def search_candidates(
                 "matching_skills": matching_skills
             })
         
-        # Sort by match score in descending order (highest matches first)
+        # Sort by match score descending
         results.sort(key=lambda x: x["match_score"], reverse=True)
         
         return {
@@ -59,7 +60,6 @@ async def search_candidates(
             "results": results,
             "total_found": len(results)
         }
-    
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 

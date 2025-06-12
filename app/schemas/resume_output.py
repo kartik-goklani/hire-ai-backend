@@ -1,19 +1,26 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
+from datetime import datetime
 
 class FormattedCandidateData(BaseModel):
-    name: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    location: Optional[str] = None
-    experience_years: Optional[int] = None
+    name: Optional[str] = Field(default=None)
+    email: Optional[str] = Field(default=None)
+    phone: Optional[str] = Field(default=None)
+    location: Optional[str] = Field(default=None)
+    experience_years: Optional[int] = Field(default=None)
     skills: List[str] = Field(default_factory=list)
     
-    class Config:
-        # Ensure null values are properly serialized
-        json_encoders = {
-            type(None): lambda v: None
+    # Pydantic v2 config
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "name": "John Doe",
+                "email": "john@example.com",
+                "skills": ["Python", "FastAPI"]
+            }
         }
+    )
 
 class FrontendResumeResponse(BaseModel):
     status: str
@@ -22,4 +29,10 @@ class FrontendResumeResponse(BaseModel):
     filename: str
     is_new: bool
     note: Optional[str] = None
-    formatted_summary: str  # This will contain the formatted string for frontend
+    formatted_summary: str  # LLM-formatted string for frontend display
+
+    model_config = ConfigDict(
+        json_encoders={
+            datetime: lambda v: v.isoformat()  # Handle Firestore timestamps
+        }
+    )

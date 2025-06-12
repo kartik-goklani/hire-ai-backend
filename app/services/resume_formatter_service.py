@@ -3,6 +3,9 @@ import json
 from typing import Dict, Any
 import os
 from app.schemas.resume_output import FormattedCandidateData, FrontendResumeResponse
+from app.services.logger import AppLogger
+
+logger = AppLogger.get_logger(__name__)
 
 class ResumeFormatterService:
     def __init__(self):
@@ -54,6 +57,8 @@ class ResumeFormatterService:
                 # Create formatted summary string for frontend
                 formatted_summary = self._create_formatted_summary(candidate_formatted)
                 
+                logger.info("Resume formatted successfully via Groq LLM")
+                
                 # Return complete response
                 return FrontendResumeResponse(
                     status=raw_resume_data.get("status", "success"),
@@ -66,10 +71,11 @@ class ResumeFormatterService:
                 )
             else:
                 # Fallback to manual formatting if LLM fails
+                logger.warning("Groq LLM formatting failed, using fallback formatting")
                 return self._fallback_formatting(raw_resume_data)
                 
         except Exception as e:
-            print(f"Resume formatting failed: {e}")
+            logger.error(f"Resume formatting failed: {e}")
             return self._fallback_formatting(raw_resume_data)
     
     async def _call_groq_api(self, prompt: str) -> Dict:
@@ -102,11 +108,11 @@ class ResumeFormatterService:
                 if json_start != -1 and json_end > json_start:
                     json_content = content[json_start:json_end]
                     return json.loads(json_content)
-            
+            logger.error(f"Groq API call failed with status {response.status_code}: {response.text}")
             return None
             
         except Exception as e:
-            print(f"Groq API call failed: {e}")
+            logger.error(f"Groq API call failed: {e}")
             return None
     
     def _create_formatted_summary(self, candidate: FormattedCandidateData) -> str:
@@ -135,7 +141,7 @@ class ResumeFormatterService:
         )
         
         formatted_summary = self._create_formatted_summary(candidate_formatted)
-        
+        logger.info("Used fallback formatting for resume data")
         return FrontendResumeResponse(
             status=raw_data.get("status", "success"),
             message=raw_data.get("message", "Resume processed successfully"),

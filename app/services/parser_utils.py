@@ -2,6 +2,9 @@ import re
 from typing import Dict, List
 from io import BytesIO
 import PyPDF2
+from app.services.logger import AppLogger
+
+logger = AppLogger.get_logger(__name__)
 
 # Robust spacy import with fallback
 try:
@@ -10,11 +13,11 @@ try:
         nlp = spacy.load("en_core_web_sm")
         SPACY_AVAILABLE = True
     except OSError:
-        print("Warning: spacy model 'en_core_web_sm' not found. Install with: python -m spacy download en_core_web_sm")
+        logger.warning("spacy model 'en_core_web_sm' not found. Install with: python -m spacy download en_core_web_sm")
         nlp = None
         SPACY_AVAILABLE = False
 except ImportError:
-    print("Warning: spacy not available. Install with: pip install spacy")
+    logger.warning("spacy not available. Install with: pip install spacy")
     nlp = None
     SPACY_AVAILABLE = False
 
@@ -24,16 +27,16 @@ try:
     from docx import Document
     import docx
     DOCX_AVAILABLE = True
-    print("Successfully imported python-docx")
+    logger.info("Successfully imported python-docx")
 except ImportError:
     try:
         # If that fails, try the old docx package
         import docx
         from docx import Document
         DOCX_AVAILABLE = True
-        print("Warning: Using old docx package. Consider upgrading to python-docx")
+        logger.warning("Warning: Using old docx package. Consider upgrading to python-docx")
     except ImportError:
-        print("Warning: docx package not found. Install with: pip uninstall docx && pip install python-docx")
+        logger.warning("docx package not found. Install with: pip uninstall docx && pip install python-docx")
         DOCX_AVAILABLE = False
         
         # Create a dummy Document class to prevent errors
