@@ -40,10 +40,7 @@ async def register_user(
         # Initialize empty subcollection (Firestore creates it when first document is added)
         # No need to explicitly create the subcollection
         
-        return {
-            "message": "User registered successfully",
-            "user": user_data
-        }
+        return user_data
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")

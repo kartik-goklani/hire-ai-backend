@@ -1,6 +1,6 @@
 # app/services/candidate_service.py
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from app.services.logger import AppLogger
 from app.services.firestore_service import FirestoreService
 
@@ -32,8 +32,8 @@ class CandidateService:
             doc_ref = self.candidates.document()
             candidate_data.update({
                 "id": doc_ref.id,
-                "created_at": datetime.timezone.utcnow(),
-                "uploaded_by": self.user_email  # Track who uploaded this
+                "created_at": datetime.now(timezone.utc),  # Corrected datetime usage
+                "uploaded_by": self.user_email
             })
             doc_ref.set(candidate_data)
             
