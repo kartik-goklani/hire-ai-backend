@@ -22,7 +22,7 @@ class AIService:
         
         Extract and return ONLY valid JSON with these exact fields:
         {{
-            "skills": ["list of technical skills mentioned"],
+            "skills": ["list of technical skills mentioned - be very liberal in extracting skills from job titles and descriptions"],
             "experience_min": number (minimum years, 0 if not specified),
             "experience_max": number (maximum years, 20 if not specified),
             "location": "city/location mentioned or null",
@@ -30,7 +30,11 @@ class AIService:
             "keywords": ["important keywords from query"]
         }}
         
-        Be specific and accurate. If no skills are mentioned, return empty array.
+        IMPORTANT: 
+        - If query mentions "Python developer", include "Python" in skills
+        - If query mentions "React engineer", include "React" in skills  
+        - Extract skills from job titles (e.g., "Java developer" → skills: ["Java"])
+        - Be aggressive in skill extraction from any technical terms
         """
         
         try:

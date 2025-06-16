@@ -22,7 +22,10 @@ class CandidateResponse(CandidateBase):
 
 class SearchQuery(BaseModel):
     query: str
-    min_experience: Optional[int] = None
-    max_experience: Optional[int] = None
-    required_skills: Optional[list[str]] = None
-    location: Optional[str] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "query": "Find me Python developers with 3+ years experience in New York"
+            }
+        }
