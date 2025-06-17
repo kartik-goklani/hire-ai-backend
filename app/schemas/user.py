@@ -10,4 +10,5 @@ class UserResponse(BaseModel):
     name: str
     email: str
     resumes_uploaded: int
-    created_at: datetime
+    created_at: str
+

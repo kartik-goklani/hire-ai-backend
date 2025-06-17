@@ -1,7 +1,9 @@
+# app/services/resume_formatter_service.py
 import requests
 import json
 from typing import Dict, Any
 import os
+from fastapi.encoders import jsonable_encoder
 from app.schemas.resume_output import FormattedCandidateData, FrontendResumeResponse
 from app.services.logger import AppLogger
 
@@ -16,8 +18,12 @@ class ResumeFormatterService:
         """Format raw resume parser output into clean frontend-friendly format"""
         
         try:
+            # Convert Firestore datetime objects to JSON serializable format
+            serializable_data = jsonable_encoder(raw_resume_data)
+            logger.debug(f"Converted raw data to serializable format")
+            
             # Extract candidate data from raw output
-            candidate_raw = raw_resume_data.get("candidate", {})
+            candidate_raw = serializable_data.get("candidate", {})
             
             # Create prompt for Groq to clean and structure the data
             prompt = f"""
@@ -59,28 +65,37 @@ class ResumeFormatterService:
                 
                 logger.info("Resume formatted successfully via Groq LLM")
                 
-                # Return complete response
+                # Return complete response using serializable data
                 return FrontendResumeResponse(
-                    status=raw_resume_data.get("status", "success"),
-                    message=raw_resume_data.get("message", "Resume processed successfully"),
+                    status=serializable_data.get("status", "success"),
+                    message=serializable_data.get("message", "Resume processed successfully"),
                     candidate=candidate_formatted,
-                    filename=raw_resume_data.get("filename", ""),
-                    is_new=raw_resume_data.get("is_new", True),
-                    note=raw_resume_data.get("note"),
+                    filename=serializable_data.get("filename", ""),
+                    is_new=serializable_data.get("is_new", True),
+                    note=serializable_data.get("note"),
                     formatted_summary=formatted_summary
                 )
             else:
                 # Fallback to manual formatting if LLM fails
                 logger.warning("Groq LLM formatting failed, using fallback formatting")
-                return self._fallback_formatting(raw_resume_data)
+                return self._fallback_formatting(serializable_data)
                 
         except Exception as e:
             logger.error(f"Resume formatting failed: {e}")
-            return self._fallback_formatting(raw_resume_data)
+            # Use jsonable_encoder for fallback as well
+            try:
+                serializable_data = jsonable_encoder(raw_resume_data)
+                return self._fallback_formatting(serializable_data)
+            except Exception as fallback_error:
+                logger.error(f"Fallback formatting also failed: {fallback_error}")
+                # Last resort - return minimal response
+                return self._minimal_fallback(raw_resume_data)
     
     async def _call_groq_api(self, prompt: str) -> Dict:
         """Call Groq API to format the data"""
         try:
+            logger.debug("Calling Groq API for data formatting")
+            
             response = requests.post(
                 f"{self.base_url}/chat/completions",
                 headers={
@@ -95,7 +110,8 @@ class ResumeFormatterService:
                     ],
                     "temperature": 0.1,
                     "max_tokens": 500
-                }
+                },
+                timeout=30
             )
             
             if response.status_code == 200:
@@ -107,10 +123,22 @@ class ResumeFormatterService:
                 json_end = content.rfind('}') + 1
                 if json_start != -1 and json_end > json_start:
                     json_content = content[json_start:json_end]
-                    return json.loads(json_content)
-            logger.error(f"Groq API call failed with status {response.status_code}: {response.text}")
-            return None
+                    parsed_data = json.loads(json_content)
+                    logger.debug("Successfully parsed Groq API response")
+                    return parsed_data
+                else:
+                    logger.error("No valid JSON found in Groq response")
+                    return None
+            else:
+                logger.error(f"Groq API call failed with status {response.status_code}: {response.text}")
+                return None
             
+        except requests.RequestException as e:
+            logger.error(f"Groq API request failed: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse Groq API JSON response: {e}")
+            return None
         except Exception as e:
             logger.error(f"Groq API call failed: {e}")
             return None
@@ -124,49 +152,166 @@ class ResumeFormatterService:
         experience_years = candidate.experience_years or 0
         skills = candidate.skills or []
         
-        return f"Name: {name} | Email: {email} | Phone: {phone} | Location: {location} | Experience: {experience_years} years | Skills: {', '.join(skills)}"
+        skills_str = ', '.join(skills) if skills else "No skills listed"
+        
+        return f"Name: {name} | Email: {email} | Phone: {phone} | Location: {location} | Experience: {experience_years} years | Skills: {skills_str}"
     
     def _fallback_formatting(self, raw_data: Dict) -> FrontendResumeResponse:
         """Fallback formatting if LLM fails"""
-        candidate_raw = raw_data.get("candidate", {})
-        
-        # Manual cleaning
-        candidate_formatted = FormattedCandidateData(
-            name=self._clean_name(candidate_raw.get("name")),
-            email=candidate_raw.get("email"),
-            phone=self._clean_phone(candidate_raw.get("phone")),
-            location=self._extract_location(candidate_raw.get("location")),
-            experience_years=candidate_raw.get("experience_years"),
-            skills=candidate_raw.get("skills", [])
-        )
-        
-        formatted_summary = self._create_formatted_summary(candidate_formatted)
-        logger.info("Used fallback formatting for resume data")
-        return FrontendResumeResponse(
-            status=raw_data.get("status", "success"),
-            message=raw_data.get("message", "Resume processed successfully"),
-            candidate=candidate_formatted,
-            filename=raw_data.get("filename", ""),
-            is_new=raw_data.get("is_new", True),
-            note=raw_data.get("note"),
-            formatted_summary=formatted_summary
-        )
+        try:
+            candidate_raw = raw_data.get("candidate", {})
+            
+            # Manual cleaning
+            candidate_formatted = FormattedCandidateData(
+                name=self._clean_name(candidate_raw.get("name")),
+                email=self._clean_email(candidate_raw.get("email")),
+                phone=self._clean_phone(candidate_raw.get("phone")),
+                location=self._extract_location(candidate_raw.get("location")),
+                experience_years=self._clean_experience(candidate_raw.get("experience_years")),
+                skills=self._clean_skills(candidate_raw.get("skills", []))
+            )
+            
+            formatted_summary = self._create_formatted_summary(candidate_formatted)
+            logger.info("Used fallback formatting for resume data")
+            
+            return FrontendResumeResponse(
+                status=raw_data.get("status", "success"),
+                message=raw_data.get("message", "Resume processed successfully"),
+                candidate=candidate_formatted,
+                filename=raw_data.get("filename", ""),
+                is_new=raw_data.get("is_new", True),
+                note=raw_data.get("note"),
+                formatted_summary=formatted_summary
+            )
+        except Exception as e:
+            logger.error(f"Fallback formatting failed: {e}")
+            return self._minimal_fallback(raw_data)
+    
+    def _minimal_fallback(self, raw_data: Dict) -> FrontendResumeResponse:
+        """Minimal fallback when all else fails"""
+        try:
+            candidate_raw = raw_data.get("candidate", {})
+            
+            # Create minimal candidate data
+            candidate_formatted = FormattedCandidateData(
+                name=str(candidate_raw.get("name", "Unknown")) if candidate_raw.get("name") else "Unknown",
+                email=str(candidate_raw.get("email", "")) if candidate_raw.get("email") else None,
+                phone=str(candidate_raw.get("phone", "")) if candidate_raw.get("phone") else None,
+                location=str(candidate_raw.get("location", "")) if candidate_raw.get("location") else None,
+                experience_years=0,
+                skills=[]
+            )
+            
+            formatted_summary = self._create_formatted_summary(candidate_formatted)
+            logger.warning("Used minimal fallback formatting")
+            
+            return FrontendResumeResponse(
+                status="success",
+                message="Resume processed with basic formatting",
+                candidate=candidate_formatted,
+                filename=str(raw_data.get("filename", "")),
+                is_new=bool(raw_data.get("is_new", True)),
+                note="Processed with minimal formatting due to errors",
+                formatted_summary=formatted_summary
+            )
+        except Exception as e:
+            logger.error(f"Even minimal fallback failed: {e}")
+            # Return absolute minimal response
+            return FrontendResumeResponse(
+                status="error",
+                message="Resume processing encountered errors",
+                candidate=FormattedCandidateData(
+                    name="Unknown",
+                    email=None,
+                    phone=None,
+                    location=None,
+                    experience_years=0,
+                    skills=[]
+                ),
+                filename="",
+                is_new=True,
+                note="Processing failed",
+                formatted_summary="Name: Unknown | Email: No email | Phone: No phone | Location: No location | Experience: 0 years | Skills: No skills listed"
+            )
     
     def _clean_name(self, name: str) -> str:
         """Clean up name formatting"""
-        if not name:
+        if not name or name == "":
             return None
-        return " ".join(name.split())  # Remove extra spaces
+        try:
+            # Remove extra spaces and clean up
+            cleaned = " ".join(str(name).split())
+            return cleaned if cleaned else None
+        except Exception:
+            return None
+    
+    def _clean_email(self, email: str) -> str:
+        """Clean up email formatting"""
+        if not email or email == "":
+            return None
+        try:
+            cleaned = str(email).strip().lower()
+            # Basic email validation
+            if "@" in cleaned and "." in cleaned:
+                return cleaned
+            return None
+        except Exception:
+            return None
     
     def _clean_phone(self, phone: str) -> str:
         """Clean up phone formatting"""
-        if not phone:
+        if not phone or phone == "":
             return None
-        # Basic phone cleaning - you can enhance this
-        return phone.strip()
+        try:
+            # Basic phone cleaning
+            cleaned = str(phone).strip()
+            return cleaned if cleaned else None
+        except Exception:
+            return None
     
     def _extract_location(self, location: str) -> str:
         """Extract location"""
         if not location or location == "":
             return None
-        return location.strip()
+        try:
+            cleaned = str(location).strip()
+            return cleaned if cleaned else None
+        except Exception:
+            return None
+    
+    def _clean_experience(self, experience) -> int:
+        """Clean experience years"""
+        if experience is None:
+            return 0
+        try:
+            if isinstance(experience, (int, float)):
+                return max(0, int(experience))
+            elif isinstance(experience, str):
+                # Try to extract number from string
+                import re
+                numbers = re.findall(r'\d+', str(experience))
+                if numbers:
+                    return max(0, int(numbers[0]))
+            return 0
+        except Exception:
+            return 0
+    
+    def _clean_skills(self, skills) -> list:
+        """Clean skills list"""
+        if not skills:
+            return []
+        try:
+            if isinstance(skills, str):
+                # Split string into list
+                skills_list = [skill.strip() for skill in skills.split(',')]
+                return [skill for skill in skills_list if skill]
+            elif isinstance(skills, list):
+                # Clean existing list
+                cleaned_skills = []
+                for skill in skills:
+                    if skill and str(skill).strip():
+                        cleaned_skills.append(str(skill).strip())
+                return cleaned_skills
+            return []
+        except Exception:
+            return []
