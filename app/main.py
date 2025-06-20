@@ -18,6 +18,7 @@ origins = [
     "http://localhost:3001",
     "https://hire-lm7mqnswz-eshaans-projects-432e55c0.vercel.app",
     "https://*.vercel.app",
+    "https://hire-fast-ai.vercel.app"
     # Remove "*" in production
 ]
 
