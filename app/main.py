@@ -3,7 +3,7 @@ load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import candidates, search, users, outreach
+from app.routers import candidates, search, users, outreach, test_pii, test_enhanced_pii, analytics
 import os
 
 # Create FastAPI application
@@ -34,6 +34,10 @@ app.include_router(candidates.router, prefix="/api/candidates", tags=["candidate
 app.include_router(search.router, prefix="/api/peoplegpt", tags=["peoplegpt"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(outreach.router, prefix="/api/outreach", tags=["outreach"])
+app.include_router(test_pii.router, prefix="/api/test", tags=["testing"])
+app.include_router(test_enhanced_pii.router, prefix="/api/test", tags=["testing"])
+app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"])
+
 
 @app.get("/")
 async def root():
